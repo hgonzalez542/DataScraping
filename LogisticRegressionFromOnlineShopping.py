@@ -23,7 +23,7 @@ y = df['Revenue']
 num_features = X.select_dtypes(include=['int64', 'float64']).columns
 cat_features = X.select_dtypes(include=['object']).columns
 
-# Preprocessing pipeline
+# Preprocessing pipeline ~ I love how this conceptually looks and functions
 preprocessor = ColumnTransformer([
     ('num', StandardScaler(), num_features),
     ('cat', OneHotEncoder(handle_unknown='ignore'), cat_features)
