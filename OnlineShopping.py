@@ -1,92 +1,83 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import accuracy_score
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.metrics import silhouette_score
 
+# Load dataset
 df = pd.read_csv("online_shoppers_intention.csv")
 
-# Define features and target
-X = df.drop(columns=['Revenue'])
-y = df['Revenue']
+# Identify numerical and categorical features (excluding the target variable "Revenue")
+num_features = df.select_dtypes(include=['int64', 'float64']).columns.tolist()
+if "Revenue" in num_features:
+    num_features.remove("Revenue")
 
-# Identify numerical and categorical features
-num_features = X.select_dtypes(include=['int64', 'float64']).columns
-cat_features = X.select_dtypes(include=['object']).columns
+cat_features = df.select_dtypes(include=['object', 'bool']).columns.tolist()
+if "Revenue" in cat_features:
+    cat_features.remove("Revenue")
 
-# Preprocessing ~ This is some amazing practice by the way. this assignment reallt reinforced it all for me
+# Preprocessing pipeline
 preprocessor = ColumnTransformer([
     ('num', StandardScaler(), num_features),
     ('cat', OneHotEncoder(handle_unknown='ignore'), cat_features)
 ])
 
-# Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+# Transform the dataset
+X = df.drop(columns=['Revenue'])
+X_processed = preprocessor.fit_transform(X)
 
-# Finding optimal k for kNN
-k_values = range(1, 21)
-accuracies = []
+# Try different k values for K-Means clustering
+k_values = range(2, 11)
+inertia_values = []
+silhouette_scores = []
 
 for k in k_values:
-    knn_pipeline = Pipeline([
-        ('preprocessor', preprocessor),
-        ('classifier', KNeighborsClassifier(n_neighbors=k))
-    ])
-    knn_pipeline.fit(X_train, y_train)
-    y_pred = knn_pipeline.predict(X_test)
-    accuracies.append(accuracy_score(y_test, y_pred))
+    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
+    cluster_labels = kmeans.fit_predict(X_processed)
+    
+    inertia_values.append(kmeans.inertia_)
+    silhouette_scores.append(silhouette_score(X_processed, cluster_labels))
 
-# Plot k vs. accuracy
+# Plot Inertia (Elbow Method)
 plt.figure(figsize=(8, 5))
-plt.plot(k_values, accuracies, marker='o', linestyle='-')
-plt.xlabel("Number of Neighbors (k)")
-plt.ylabel("Accuracy")
-plt.title("kNN: Choosing the Optimal k")
-plt.xticks(k_values)
+plt.plot(k_values, inertia_values, marker='o', linestyle='-')
+plt.xlabel("Number of Clusters (k)")
+plt.ylabel("Inertia (Sum of Squared Distances)")
+plt.title("Elbow Method for Optimal k in K-Means")
 plt.grid()
 plt.show()
 
-#Not sure if there was a more efficient way to do this. Please comment on it if there is 
-# Choose the best k
-best_k = k_values[np.argmax(accuracies)]
+# Plot Silhouette Score
+plt.figure(figsize=(8, 5))
+plt.plot(k_values, silhouette_scores, marker='o', linestyle='-')
+plt.xlabel("Number of Clusters (k)")
+plt.ylabel("Silhouette Score")
+plt.title("Silhouette Score for Different k in K-Means")
+plt.grid()
+plt.show()
 
-# Train kNN with best k
-knn_pipeline = Pipeline([
-    ('preprocessor', preprocessor),
-    ('classifier', KNeighborsClassifier(n_neighbors=best_k))
-])
-knn_pipeline.fit(X_train, y_train)
-y_pred_knn = knn_pipeline.predict(X_test)
-accuracy_knn = accuracy_score(y_test, y_pred_knn)
+# Choose best k based on highest silhouette score
+best_k = k_values[np.argmax(silhouette_scores)]
 
-# Train Decision Tree classifier
-dt_pipeline = Pipeline([
-    ('preprocessor', preprocessor),
-    ('classifier', DecisionTreeClassifier(random_state=42))
-])
-dt_pipeline.fit(X_train, y_train)
-y_pred_dt = dt_pipeline.predict(X_test)
-accuracy_dt = accuracy_score(y_test, y_pred_dt)
+# Train K-Means with best k
+kmeans = KMeans(n_clusters=best_k, random_state=42, n_init=10)
+kmeans_labels = kmeans.fit_predict(X_processed)
+silhouette_kmeans = silhouette_score(X_processed, kmeans_labels)
 
-# Train Random Forest classifier
-rf_pipeline = Pipeline([
-    ('preprocessor', preprocessor),
-    ('classifier', RandomForestClassifier(n_estimators=100, random_state=42))
-])
-rf_pipeline.fit(X_train, y_train)
-y_pred_rf = rf_pipeline.predict(X_test)
-accuracy_rf = accuracy_score(y_test, y_pred_rf)
+# Train Agglomerative Clustering (Complete Linkage) with same k
+agglo = AgglomerativeClustering(n_clusters=best_k, linkage='complete')
+agglo_labels = agglo.fit_predict(X_processed)
+silhouette_agglo = silhouette_score(X_processed, agglo_labels)
 
-# Display results
-accuracy_results = pd.DataFrame({
-    "Model": ["kNN (best k)", "Decision Tree", "Random Forest"],
-    "Accuracy": [accuracy_knn, accuracy_dt, accuracy_rf]
+# Store results in DataFrame
+clustering_results = pd.DataFrame({
+    "Clustering Method": ["K-Means", "Agglomerative (Complete Linkage)"],
+    "Best k": [best_k, best_k],
+    "Silhouette Score": [silhouette_kmeans, silhouette_agglo]
 })
 
-print(accuracy_results)
+# Display clustering results
+print(clustering_results)
